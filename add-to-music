@@ -27,6 +27,7 @@ my $LIBRARY = "$ENV{HOME}/Music";
 my @AUDIO_FILES = qw(
     mp3
     m4a
+    flac
 );
 
 # Image file extensions (typically cover art files)

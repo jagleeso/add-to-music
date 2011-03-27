@@ -8,6 +8,7 @@ BEGIN {
 
 use Audio::MP3;
 use Audio::M4A;
+use Audio::FLAC;
 
 use Switch;
 use Carp;
@@ -18,8 +19,9 @@ sub file {
     if ($path =~ /\.(.*)$/) {
         my $ext = $1;
         switch ($ext) {
-            case /mp3/i { $this = Audio::MP3->file($path) }
-            case /m4a/i { $this = Audio::M4A->file($path) }
+            case /mp3/i  { $this = Audio::MP3->file($path) }
+            case /m4a/i  { $this = Audio::M4A->file($path) }
+            case /flac/i { $this = Audio::FLAC->file($path) }
         }            
         return $this if defined $this;
     }
