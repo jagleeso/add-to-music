@@ -15,10 +15,10 @@ DESCRIPTION
     mp3, m4a, ogg, flac
 
     Currently supported cover art files:
-    jpg, gif, png
+    jpg, jpeg, gif, png, bmp, pdf
 
     Filetypes to delete:
-    m3u, pls, wpl, cue, nfo, sfv, txt
+    m3u, pls, wpl, cue, nfo, sfv, txt, url, db, ini
 
 OPTIONS
     --library, -l
