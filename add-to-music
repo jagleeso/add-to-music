@@ -64,11 +64,17 @@ sub main {
         my $list_exts = sub { join ', ', @_ };
         print <<EOF
 USAGE
-    add-to-music [dir_1, dir_2, ..., dir_N]
+    add-to-music [path_1, path_2, ..., path_N]
 
 DESCRIPTION
-    Move all the music files from the specified directories to your music library, then
-    cleanup all the junk files that remain (e.g. text files, playlist files, etc.). 
+    Move all the music files from the specified directories/files to your music library 
+    using their artist/album tags to determine where to put them.  When importing 
+    directories, cleanup all the junk files that remain (e.g. text files, playlist files, 
+    etc.). 
+
+    When importing a directory, we assume that all the music files contained in it should 
+    have matching artist/album tags.  If they don't, a prompt will be given to choose 
+    which tags to use as directories for storing the files. 
 
     Currently supported music files:
     ${\ $list_exts->(@AUDIO_FILES) }
@@ -105,12 +111,15 @@ EOF
     $usage_and_exit->() if $help;
     $usage_and_exit->("Library directory \"$library\" doesn't exist.") unless -d $library;
 
+    my @files;
     for my $file (@ARGV) {
         if (-d $file) {
             import_dir($file, $library, $force);
         } elsif (-f $file) {
+            push @files, $file;
         }
     }
+    import_songs($library, @files);
 }
 
 sub import_dir {
@@ -153,31 +162,74 @@ sub import_dir {
         ($artist, $album) = @{ $artist_and_albums[$choice] };
     }
 
-    my $artist_dir = similar_dir_or_mk(catfile($library, $artist));
-    my $album_dir  = similar_dir_or_mk(catfile($artist_dir, $album));
+    my $artist_dir = artist_dir($library, $artist);
+    my $album_dir  = album_dir($library, $artist, $album);
+
+    # import song files and cover art files
     my @imported;
     push @imported, mv_to_dir_or_die($album_dir, audio_files($dir));
     push @imported, mv_to_dir_or_die($album_dir, img_files($dir));
+
+    # delete junk files, and the source directory if its empty
     my @deleted = junk_files($dir);
     unlink @deleted if @deleted;
     rmdir $dir and push @deleted, $dir or
         print STDERR "Cannot remove directory $dir: still contains some " .
                      "files after import\n";
-    print_results($album_dir, \@imported, \@deleted, $dir);
+
+    print_results(
+        src      => $dir,
+        dest     => $album_dir,
+        imported => \@imported,
+        deleted  => \@deleted,
+    );
+}
+
+sub artist_dir {
+    my ($library, $artist) = @_;
+    similar_dir_or_mk(catfile($library, $artist));
+}
+
+sub album_dir {
+    my ($library, $artist, $album) = @_;
+    my $artist_dir = artist_dir($library, $artist);
+    similar_dir_or_mk(catfile($artist_dir, $album));
+}
+
+sub import_songs {
+    my ($library, @files) = @_;
+    my %imported;
+    for my $file (@files) {
+        my ($artist, $album) = artist_and_album($file);
+        my $album_dir = album_dir($library, $artist, $album);
+        push @{ $imported{$album_dir} }, mv_to_dir_or_die($album_dir, $file);
+    }
+    while (my ($dest, $added) = each %imported) {
+        print_results(
+            dest     => $dest,
+            imported => $added,
+        );
+    }
 }
 
 sub print_results {
-    my ($dest, $imported, $deleted, $src) = @_;
+    my %args = @_;
+    my $imported = $args{imported} // [];
+    my $deleted  = $args{deleted}  // [];
+    my $dest     = $args{dest};
+    my $src      = $args{src};
     my $print_file = sub {
         my ($status, $file) = @_;
-        print "\t" . join("\t", $status, $file) . "\n";
+        print "\t" if defined $src or defined $dest; 
+        print join("\t", $status, $file) . "\n";
     };
     if (@$imported) {
-        if (defined $src) {
-            print "$src => $dest\n";
-        } else { 
-            print "$dest\n";
+        if (defined $src or defined $dest) {
+            print(
+                ($src // "") . " => " . ($dest // "") . "\n"
+            );
         }
+
         for my $import (@$imported) {
             $print_file->('A', $import); 
         }

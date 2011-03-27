@@ -1,9 +1,15 @@
 USAGE
-    add-to-music [dir_1, dir_2, ..., dir_N]
+    add-to-music [path_1, path_2, ..., path_N]
 
 DESCRIPTION
-    Move all the music files from the specified directories to your music library, then
-    cleanup all the junk files that remain (e.g. text files, playlist files, etc.). 
+    Move all the music files from the specified directories/files to your music library 
+    using their artist/album tags to determine where to put them.  When importing 
+    directories, cleanup all the junk files that remain (e.g. text files, playlist files, 
+    etc.). 
+
+    When importing a directory, we assume that all the music files contained in it should 
+    have matching artist/album tags.  If they don't, a prompt will be given to choose 
+    which tags to use as directories for storing the files. 
 
     Currently supported music files:
     mp3, m4a, ogg, flac
