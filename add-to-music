@@ -1,0 +1,290 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+BEGIN {
+    use File::Basename;
+    use lib dirname(__FILE__) . "/lib/perl";  
+}
+
+use Audio;
+
+use Getopt::Long;
+use Cwd qw(abs_path getcwd);
+use File::Basename;
+use File::Copy qw(mv);
+use File::Spec::Functions qw(catfile);
+use Carp::Assert;
+use Symbol qw(qualify_to_ref);
+use autodie qw(mkdir unlink);
+use File::Glob qw(:glob);
+use Term::Prompt;
+
+# Default music library directory
+my $LIBRARY = "$ENV{HOME}/Music";
+
+# Audio file extensions (must be supported for reading tags through the Audio class)
+my @AUDIO_FILES = qw(
+    mp3
+    m4a
+);
+
+# Image file extensions (typically cover art files)
+my @IMG_FILES = qw(
+    jpg
+    gif
+    png
+);
+
+# Filetypes to delete
+my @JUNK_FILES = qw(
+    m3u
+    pls
+    wpl
+    cue
+    nfo
+    sfv
+    txt
+);
+
+main() unless caller;
+
+sub main {
+    my $library = $LIBRARY;
+    my $help    = 0;
+    my $force   = 0;
+    GetOptions(
+        "help|h!"     => \$help,
+        "library|l=s" => \$library,
+        "force|f!"    => \$force,
+    );
+    my $usage = sub {
+        my $list_exts = sub { join ', ', @_ };
+        print <<EOF
+USAGE
+    add-to-music [dir_1, dir_2, ..., dir_N]
+
+DESCRIPTION
+    Move all the music files from the specified directories to your music library, then
+    cleanup all the junk files that remain (e.g. text files, playlist files, etc.). 
+
+    Currently supported music files:
+    ${\ $list_exts->(@AUDIO_FILES) }
+
+    Currently supported cover art files:
+    ${\ $list_exts->(@IMG_FILES) }
+
+    Filetypes to delete:
+    ${\ $list_exts->(@JUNK_FILES) }
+
+OPTIONS
+    --library, -l
+        Directory in which to import music files to.  Music files are imported as:
+            <LIBRARY>/<ARTIST>/<ALBUM>
+        where artist/album information is determined by reading the tags of audio files.
+        default: $LIBRARY
+
+    --force, -f
+        If set, then when importing a directory, if there are multiple album/artist 
+        combinations for audio files, just choose the one with the majority.  Otherwise, 
+        if it's not set, prompt the user for a choice.
+        default: off
+
+EOF
+    };
+
+    my $usage_and_exit = sub {
+        my ($message) = @_;
+        $usage->();
+        print STDERR "$message\n" if defined $message;
+        exit 1;
+    };
+
+    $usage_and_exit->() if $help;
+    $usage_and_exit->("Library directory \"$library\" doesn't exist.") unless -d $library;
+
+    for my $file (@ARGV) {
+        if (-d $file) {
+            import_dir($file, $library, $force);
+        } elsif (-f $file) {
+        }
+    }
+}
+
+sub import_dir {
+    my ($dir, $library, $force) = @_;
+    my @artist_and_albums = artist_and_albums_ratios($dir); 
+
+    if (@artist_and_albums == 0) {
+        print STDERR "No music files found in \"$dir\"; nothing was imported.\n";
+        return;
+    }
+
+    my ($artist, $album);
+    if (@artist_and_albums == 1 or $force) {
+        ($artist, $album) = @{ $artist_and_albums[0] };
+    } else {
+        # decide which artist and album to use using some threshold cut off;
+        # calculate from music library?
+        my $menu_entry = sub {
+            my ($artist, $album, $ratio) = @_;
+            sprintf "%3d%% of files: $artist - $album", $ratio * 100;
+        };
+        my $choice = prompt(
+            'm', 
+            {
+                items                  => [ 
+                    ( map { $menu_entry->(@$_) } @artist_and_albums ),
+                    "Skip this import",
+                ],
+                order                  => 'down',
+                cols                   => 1,
+                accept_empty_selection => 0,
+            },
+            "Multiple artist/albums found; choose which one to use",
+            1,
+        ); 
+        if ($choice + 1 > @artist_and_albums) {
+            print "Skipping import of \"$dir\"\n";
+            return;
+        }
+        ($artist, $album) = @{ $artist_and_albums[$choice] };
+    }
+
+    my $artist_dir = similar_dir_or_mk(catfile($library, $artist));
+    my $album_dir  = similar_dir_or_mk(catfile($artist_dir, $album));
+    my @imported;
+    push @imported, mv_to_dir_or_die($album_dir, audio_files($dir));
+    push @imported, mv_to_dir_or_die($album_dir, img_files($dir));
+    my @deleted = junk_files($dir);
+    unlink @deleted if @deleted;
+    rmdir $dir and push @deleted, $dir or
+        print STDERR "Cannot remove directory $dir: still contains some " .
+                     "files after import\n";
+    print_results($album_dir, \@imported, \@deleted, $dir);
+}
+
+sub print_results {
+    my ($dest, $imported, $deleted, $src) = @_;
+    my $print_file = sub {
+        my ($status, $file) = @_;
+        print "\t" . join("\t", $status, $file) . "\n";
+    };
+    if (@$imported) {
+        if (defined $src) {
+            print "$src => $dest\n";
+        } else { 
+            print "$dest\n";
+        }
+        for my $import (@$imported) {
+            $print_file->('A', $import); 
+        }
+        for my $delete (@$deleted) {
+            $print_file->('D', $delete); 
+        }
+    }
+}
+
+sub mv_to_dir_or_die {
+    my ($dir, @files) = @_;
+    my @moved;
+    for my $file (@files) {
+        mv($file, $dir) or die "Failed to move $file to $dir; $!";
+        push @moved, $file if wantarray;
+    }
+    @moved;
+}
+
+sub escape_glob (\$) {
+    my ($glob_string) = @_;
+    my $GLOB_CHARS = '\[]{}*?~';
+    # escape GLOB_CHARS so we can substitute into a regexp
+    $GLOB_CHARS =~ s/]/\\]/g;
+    $$glob_string =~ s/([$GLOB_CHARS])/\\$1/g;
+}
+
+sub files_with_exts {
+    my ($dir, @exts) = @_;
+    assert(-d $dir, "$dir is a directory");
+    @exts = map { "*.$_" } @exts;
+    # trim ending "/" if any
+    $dir =~ s/\/$//;
+    escape_glob $dir;
+    bsd_glob("$dir/{${\ join ',', @exts }}");
+}
+
+sub audio_files {
+    my ($dir) = @_;
+    files_with_exts($dir, @AUDIO_FILES);
+}
+
+sub img_files {
+    my ($dir) = @_;
+    files_with_exts($dir, @IMG_FILES);
+}
+
+sub junk_files {
+    my ($dir) = @_;
+    files_with_exts($dir, @JUNK_FILES);
+}
+
+sub similar_dir_or_mk {
+    my ($dir_path) = @_;
+    my @similar_dirs = similar_base($dir_path);
+    assert(@similar_dirs <= 1, "No more than one similar directory");
+    if (@similar_dirs == 0) {
+        assert(-e abs_path(dirname($dir_path)), "Dirname of $dir_path exists");
+        mkdir catfile(
+                  abs_path(dirname($dir_path)),
+                  basename($dir_path)
+              );
+    } else {
+        $dir_path = $similar_dirs[0];
+    }
+    $dir_path;
+}
+
+sub similar_base {
+    my ($path) = @_;
+    my $base = basename($path);
+    my $dir  = dirname($path);
+    my $is_similar = sub {
+        my ($a, $b) = @_;
+        lc $a eq lc $b;
+    };
+    my $escaped_dir = $dir;
+    escape_glob $escaped_dir;
+    grep { $is_similar->($base, basename($_)) } bsd_glob("$escaped_dir/*");
+}
+
+sub artist_and_albums_ratios {
+    my ($dir) = @_;
+
+    my $RATIO_POSN = 2;
+
+    my @artist_and_albums;
+    my @audio_files = audio_files($dir);
+    my %counts;
+    for my $file (@audio_files) {
+        my ($artist, $album) = artist_and_album($file);
+        my $key = lc "$artist$album";
+        if (exists $counts{$key}) {
+            $counts{$key}[$RATIO_POSN]++;
+        } else {
+            $counts{$key} = [$artist, $album, 1];
+        }
+    }
+
+    my @tuples = map {
+        my @tuple = @$_;
+        $tuple[$RATIO_POSN] /= @audio_files;
+        \@tuple;
+    } values %counts;
+    sort { @$b[$RATIO_POSN] <=> @$a[$RATIO_POSN] } @tuples;
+}
+
+sub artist_and_album {
+    my ($audio_file) = @_;
+    my $file = Audio->file($audio_file) or die;
+    ($file->artist, $file->album);
+}
