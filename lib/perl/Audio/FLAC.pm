@@ -32,4 +32,4 @@ sub impl {
     $this->{impl};
 }
 
-1
+1;

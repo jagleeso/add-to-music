@@ -8,6 +8,7 @@ BEGIN {
 
 use Audio::MP3;
 use Audio::M4A;
+use Audio::OGG;
 use Audio::FLAC;
 
 use Switch;
@@ -21,6 +22,7 @@ sub file {
         switch ($ext) {
             case /mp3/i  { $this = Audio::MP3->file($path) }
             case /m4a/i  { $this = Audio::M4A->file($path) }
+            case /ogg/i  { $this = Audio::OGG->file($path) }
             case /flac/i { $this = Audio::FLAC->file($path) }
         }            
         return $this if defined $this;

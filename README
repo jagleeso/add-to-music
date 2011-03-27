@@ -6,7 +6,7 @@ DESCRIPTION
     cleanup all the junk files that remain (e.g. text files, playlist files, etc.). 
 
     Currently supported music files:
-    mp3, m4a, flac
+    mp3, m4a, ogg, flac
 
     Currently supported cover art files:
     jpg, gif, png
