@@ -34,8 +34,11 @@ my @AUDIO_FILES = qw(
 # Image file extensions (typically cover art files)
 my @IMG_FILES = qw(
     jpg
+    jpeg
     gif
     png
+    bmp
+    pdf
 );
 
 # Filetypes to delete
@@ -47,6 +50,9 @@ my @JUNK_FILES = qw(
     nfo
     sfv
     txt
+    url
+    db
+    ini
 );
 
 main() unless caller;
