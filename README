@@ -6,10 +6,24 @@ DESCRIPTION
     cleanup all the junk files that remain (e.g. text files, playlist files, etc.). 
 
     Currently supported music files:
-    mp3, m4a
+    mp3, m4a, flac
 
     Currently supported cover art files:
     jpg, gif, png
 
     Filetypes to delete:
     m3u, pls, wpl, cue, nfo, sfv, txt
+
+OPTIONS
+    --library, -l
+        Directory in which to import music files to.  Music files are imported as:
+            <LIBRARY>/<ARTIST>/<ALBUM>
+        where artist/album information is determined by reading the tags of audio files.
+        default: /home/james/Music
+
+    --force, -f
+        If set, then when importing a directory, if there are multiple album/artist 
+        combinations for audio files, just choose the one with the majority.  Otherwise, 
+        if it's not set, prompt the user for a choice.
+        default: off
+
