@@ -1,0 +1,15 @@
+USAGE
+    add-to-music [dir_1, dir_2, ..., dir_N]
+
+DESCRIPTION
+    Move all the music files from the specified directories to your music library, then
+    cleanup all the junk files that remain (e.g. text files, playlist files, etc.). 
+
+    Currently supported music files:
+    mp3, m4a
+
+    Currently supported cover art files:
+    jpg, gif, png
+
+    Filetypes to delete:
+    m3u, pls, wpl, cue, nfo, sfv, txt
